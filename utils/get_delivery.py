@@ -1,228 +1,204 @@
-import parselmouth
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from detec_silence import *
-import re
-from pyAudioAnalysis import ShortTermFeatures
+import pandas as pd 
+import numpy as np 
+import json 
 import librosa
-
+from pyAudioAnalysis import ShortTermFeatures
+import parselmouth
 
 max_audio_length = 16000 * 90  # 假設音訊的最大長度是16000個樣本點
 target_sampling_rate = 16000
 def speech_file_to_array_fn(path):
     speech_array, sampling_rate = librosa.load(path, sr=target_sampling_rate)
     mono_waveform = librosa.resample(speech_array, orig_sr=sampling_rate, target_sr=target_sampling_rate)
-
     return mono_waveform, sampling_rate
 
-# speaker_id = '112030203021' # 2
-# speaker_id = '112020503060' # 3
-speaker_id = '112050203012' # 3
-# speaker_id = '472010112020' # 3
-# speaker_id = '472010112055' # 3.5
-# speaker_id = '472010112010' # 4
-# speaker_id = '472010112012' # 4
-# speaker_id = '112030203s029' # 5
-# speaker_id = '112010603024' # 5
-# file_path = f'/share/nas165/peng/desktop/ETS_nn/LTTC_Resample/IS-1572_sliced/{speaker_id}_300.wav'
+def save_data(data, filename):
+    with open(filename, 'w') as file:
+        json.dump(data, file, indent=2)
 
-file_type = 'fulltest' # test fulltest train
-path = f'/share/nas165/peng/thesis_project/ablation_0417/data/LTTC_Intemidiate/Unseen_1964/{file_type}_1964.csv'
-outputname = f'./{file_type}_acoustic_0516.csv'
-df = pd.read_csv(path)
+file_path_json = '/share/nas165/peng/whisperX/LTTC_Intermediate.json'
+# file_path_json = '/share/nas165/peng/whisperX/data.json'
+file_path = '/share/nas165/peng/thesis_project/delivery_feat/Delivery_0508.csv'
+
+# open json
+fin = open(file_path_json)
+data = json.load(fin)
+# print(data['112010103002'])
+# open origin
+df = pd.read_csv(file_path)
 
 new_dict = {}
+
 for index, row in df.iterrows():
-
-    # if index == 3:
-    #   break
-
+    temp_dict = {}
+    # if index == 2:
+    #     break
+    print(index)
+    speaker_id = str(row['speaker_id'])
     file_path = row['wav_path']
-    print(f'{index}: {file_path}')
-    snd = parselmouth.Sound(file_path)
-    
+
     x, Fs = speech_file_to_array_fn(file_path)
+    strr = ""
+    temp_dict['transcription'] = ''
+    temp_dict['words'] = []
+    for index in range(len(data[speaker_id]['word_segments'])):
+        # print(data[speaker_id]['word_segments'][index])
+        strr += data[speaker_id]['word_segments'][index]['word'] + " "
+        try:
+            start_sec = data[speaker_id]['word_segments'][index]['start']
+            end_sec = data[speaker_id]['word_segments'][index]['end']
 
-    # Intensity
-    intensity = snd.to_intensity()
-    mean_intensity = intensity.values.mean()
-    # print(f"Mean Intensity: {mean_intensity}")
+            audio_segment_duration = end_sec - start_sec
+            duration = end_sec - start_sec
 
+            if audio_segment_duration <= 0.07:
+                tt = (0.08 - audio_segment_duration) / 2
+                start_sec -= tt
+                end_sec += tt
 
-    # Pitch
-    pitch = snd.to_pitch()
-    mean_pitch = np.nanmean(pitch.selected_array['frequency'])
-    # print(f"Mean pitch: {mean_pitch}")
+            start_sample = int(start_sec * Fs)
+            end_sample = int(end_sec * Fs)
 
-    print(f"Duration: {snd.xmin}, {snd.xmax}")
-    duration = snd.xmax - snd.xmin
-    point_process = parselmouth.praat.call([snd, pitch], "To PointProcess (cc)")
-    localJitter = parselmouth.praat.call(point_process, "Get jitter (local)", snd.xmin, snd.xmax, 0.0001, 0.02, 1.3)
-    # print(f"Local Jitter: {localJitter}")
+            # 截取指定时间段的音频数据
+            segment = x[start_sample:end_sample]
 
-    localShimmer =  parselmouth.praat.call([snd, point_process], "Get shimmer (local)", snd.xmin, snd.xmax, 0.0001, 0.02, 1.3, 1.6)
-    # print(f"Local Shimmer: {localShimmer}")
+            # 设置帧大小和步长
+            frame_size = int(0.050 * Fs)  # 50ms
+            hop_size = int(0.025 * Fs)    # 25ms
 
-    rapJitter = parselmouth.praat.call(point_process, "Get jitter (rap)", snd.xmin, snd.xmax, 0.0001, 0.02, 1.3)
-    # print(f"Local Rap Jitter: {rapJitter}")
+            F, feature_names = ShortTermFeatures.feature_extraction(segment, Fs, frame_size, hop_size)
+            # 提取特定特征
+            zero_crossing_index = feature_names.index('zcr')
+            energy_index = feature_names.index('energy')
+            energy_entropy_index = feature_names.index('energy_entropy')
+            spectral_centroid_index = feature_names.index('spectral_centroid')
 
+            zcr = F[zero_crossing_index, :]
+            zero_crossing_rate = np.mean(zcr)
+            energy = F[energy_index, :]
+            std_dev_energy = np.std(energy)
+            energy_entropy = F[energy_entropy_index, :]
+            spectral_centroid = F[spectral_centroid_index, :]
 
-    # pause
-    long_silences = detect_silences(file_path, 0.495, 0, getSoundFileLength(file_path))
-    silences = detect_silences(file_path, 0.145, 0, getSoundFileLength(file_path))
-    # print(silences)
-    # print(f'silence: {len(silences)}')
-    # print(f'Long silence: {len(long_silences)}')
-    long_silence = sum(entry['duration'] for entry in long_silences)
-    silence = sum(entry['duration'] for entry in silences)
-    mean_long_silence = np.mean([entry['duration'] for entry in long_silences])
-    mean_silence = np.mean([entry['duration'] for entry in silences])
+            energy_threshold = np.median(energy)  # Threshold for energy
+            zcr_threshold = np.median(zcr)        # Threshold for zero-crossing rate
 
-    print(mean_long_silence)
-    print(mean_silence)
-    # harmonicity05 = parselmouth.praat.call(snd, "To Harmonicity (cc)", 0.01, 500, 0.1, 1.0)
-    # hnr05 = parselmouth.praat.call(harmonicity05, "Get mean", snd.xmin, snd.xmax)
+            # Classify frames as voiced or unvoiced
+            voiced_frames = (energy > energy_threshold) & (zcr < zcr_threshold)
+            unvoiced_frames = (energy <= energy_threshold) | (zcr >= zcr_threshold)
 
-    # harmonicity15 = parselmouth.praat.call(snd, "To Harmonicity (cc)", 0.01, 1500, 0.1, 1.0)
-    # hnr15 = parselmouth.praat.call(harmonicity15, "Get mean", snd.xmin, snd.xmax)
+            # Calculate ratios
+            voiced_count = np.sum(voiced_frames)
+            unvoiced_count = np.sum(unvoiced_frames)
+            voiced_to_unvoiced_ratio = voiced_count / unvoiced_count if unvoiced_count != 0 else float('inf')
 
-    # harmonicity25 = parselmouth.praat.call(snd, "To Harmonicity (cc)", 0.01, 2500, 0.1, 1.0)
-    # hnr25 = parselmouth.praat.call(harmonicity25, "Get mean", snd.xmin, snd.xmax)
+            # pitch 
+            snd = parselmouth.Sound(file_path)
+            snd_part = snd.extract_part(from_time=start_sec, to_time=end_sec, preserve_times=True)
+            # pitch
+            pitch = snd_part.to_pitch()
+            pitch_values = pitch.selected_array['frequency']
+            pitch_values[pitch_values==0] = np.nan
+            mean_pitch = np.nanmean(pitch.selected_array['frequency'])
+            # intensity
+            intensity = snd_part.to_intensity()
+            mean_intensity = intensity.values.mean()
+            # local Jitter, local Shimmer, rap jitter
+            point_process = parselmouth.praat.call([snd_part, pitch], "To PointProcess (cc)")
+            localJitter = parselmouth.praat.call(point_process, "Get jitter (local)", start_sec, end_sec, 0.0001, 0.05, 1.3)
+            localShimmer =  parselmouth.praat.call([snd, point_process], "Get shimmer (local)", start_sec, end_sec, 0.0001, 0.05, 1.3, 1.6)
+            rapJitter = parselmouth.praat.call(point_process, "Get jitter (rap)", start_sec, end_sec, 0.0001, 0.05, 1.3)
 
-    # harmonicity05_info = harmonicity05.info()
-    # print(harmonicity05_info)
-    # sounding05_match   = re.search(r"Number of frames: \d+ \((\d+) sounding\)", harmonicity05_info)
-    # median05_match     = re.search(r"Median (\d+\.\d+) dB", harmonicity05_info)
-    # minimum05_match    = re.search(r"Minimum: ([-+]?\d+\.\d+) dB", harmonicity05_info)
-    # maximum05_match    = re.search(r"Maximum: (\d+\.\d+) dB", harmonicity05_info)
-    # averge05_match     = re.search(r"Average: (\d+\.\d+) dB", harmonicity05_info)
-    # standard05_dev     = re.search(r"Standard deviation: ([\d.]+) dB", harmonicity05_info)
+            if np.isnan(localJitter):
+                localJitter = 0
+            if np.isnan(localShimmer):
+                localShimmer = 0
+            if np.isnan(rapJitter):
+                rapJitter = 0
+
+            # {'speaker_id':'112010103012', 'words': [{'word': 'creek.', 'start': 89.929, 'end': 90.11, 'score': 0.996, 'mean_pitch': 183.60583384821885, 'mean_intensity': 58.034142143289316}]}
+            temp_dict['words'].append({**data[speaker_id]['word_segments'][index], 
+                                    'duration': duration,
+                                    'mean_pitch':mean_pitch,
+                                    'mean_intensity':mean_intensity,
+                                    'localJitter': localJitter,
+                                    'localShimmer': localShimmer,
+                                    'rapJitter': rapJitter,
+                                    'std_energy': std_dev_energy,
+                                    'avg_spectral': np.mean(energy_entropy),
+                                    'avg_energy_entropy': np.mean(spectral_centroid),
+                                    'zero_cross_rate': zero_crossing_rate,
+                                    'v_to_uv_ratio': float(voiced_to_unvoiced_ratio),
+                                    'voice_count': float(voiced_count),
+                                    'unvoice_count': float(unvoiced_count),                             
+                                    })
+        except:
+            continue
+        # print(temp_dict)
     
-
-    # harmonicity15_info = harmonicity15.info()
-    # sounding15_match = re.search(r"Number of frames: \d+ \((\d+) sounding\)", harmonicity15_info)
-    # median15_match = re.search(r"Median (\d+\.\d+) dB", harmonicity15_info)
-    # minimum15_match = re.search(r"Minimum: ([-+]?\d+\.\d+) dB", harmonicity15_info)
-    # maximum15_match = re.search(r"Maximum: (\d+\.\d+) dB", harmonicity15_info)
-    # averge15_match = re.search(r"Average: (\d+\.\d+) dB", harmonicity15_info)
-    # standard15_dev = re.search(r"Standard deviation: ([\d.]+) dB", harmonicity15_info)
-
-    # harmonicity25_info = harmonicity25.info()
-    # sounding25_match = re.search(r"Number of frames: \d+ \((\d+) sounding\)", harmonicity25_info)
-    # median25_match = re.search(r"Median (\d+\.\d+) dB", harmonicity25_info)
-    # minimum25_match = re.search(r"Minimum: ([-+]?\d+\.\d+) dB", harmonicity25_info)
-    # maximum25_match = re.search(r"Maximum: (\d+\.\d+) dB", harmonicity25_info)
-    # averge25_match = re.search(r"Average: (\d+\.\d+) dB", harmonicity25_info)
-    # standard25_dev = re.search(r"Standard deviation: ([\d.]+) dB", harmonicity25_info)
     
-    # print(f'harmonicity05\n: {harmonicity05}')
-    # print(f'\n\nharmonicity15\n: {harmonicity15}')
-    # print(f'\n\nharmonicity25\n: {harmonicity25}')
-    # print(f'Median: {float(median25_match.group(1))}')
-    # print(f'Minimum: {float(minimum25_match.group(1))}')
-    # print(f'maximum: {float(maximum25_match.group(1))}')
-    # print(f'average: {float(averge25_match.group(1))}')
-    # print(f'Standard_dev: {float(standard25_dev.group(1))}')
-    # print(f'Number of sounding: {float(sounding25_match.group(1))}')
+    temp_dict['transcription'] = strr.strip()
+    new_dict[speaker_id] = temp_dict
 
-    # # Set frame size and hop size
-    # frame_size = int(0.050 * Fs)  # 50 ms
-    # hop_size = int(0.025 * Fs)    # 25 ms
+    if (index + 1) % 10 == 0:  # 每10个项目保存一次
+        print('Save 10 files')
+        save_data(new_dict, 'LTTC_Intermediate_word_level_0509.json')
 
-    # # Extract short-term features
-    # F, feature_names = ShortTermFeatures.feature_extraction(x, Fs, frame_size, hop_size)
+    # mean_pitch	mean_intensity	duration long_silence	silence	
 
-    # # Get indices of the features
-    zero_crossing_index = feature_names.index('zcr')
-    energy_index = feature_names.index('energy')
-    energy_entropy_index = feature_names.index('energy_entropy')
-    spectral_centroid_index = feature_names.index('spectral_centroid')
+    # temp_dict['utt_mean_pitch'] = df['mean_pitch']
+    # temp_dict['utt_mean_intensity'] = df['mean_intensity']
+    # temp_dict['utt_duration'] = df['duration']
 
-    # # Get specific features
-    zcr = F[zero_crossing_index, :]
-    energy = F[energy_index, :]
-    energy_entropy = F[energy_entropy_index, :]
-    spectral_centroid = F[spectral_centroid_index, :]
+    # temp_dict['utt_long_silence'] = df['long_silence']
+    # temp_dict['utt_long_silence_num'] = str(df['long_silence_num'])
+    # temp_dict['utt_mean_long_silence'] = df['mean_long_silence']
 
-    # Compute the standard deviation of energy
-    std_dev_energy = np.std(energy)
+    # temp_dict['utt_silence'] = df['silence']
+    # temp_dict['utt_silence_num'] = str(df['silence_num'])
+    # temp_dict['utt_mean_silence'] = df['mean_silence']
 
-    # The number of zero crossing
-    zero_crossings = librosa.zero_crossings(x, pad=False)
-    total_zero_crossings = sum(zero_crossings)
+    # temp_dict['utt_std_energy'] = df['std_energy']
+    # temp_dict['utt_avg_spectral'] = df['avg_spectral']
+    # temp_dict['utt_avg_energy_entropy'] = df['avg_energy_entropy']
+    # temp_dict['utt_zero_cross_num'] = str(df['zero_cross_num'])
 
-    # voice to unvoice ratio
-    # Thresholds might need calibration based on your specific audio characteristics
-    energy_threshold = np.median(energy)  # Threshold for energy
-    zcr_threshold = np.median(zcr)        # Threshold for zero-crossing rate
-
-    # Classify frames as voiced or unvoiced
-    voiced_frames = (energy > energy_threshold) & (zcr < zcr_threshold)
-    unvoiced_frames = (energy <= energy_threshold) | (zcr >= zcr_threshold)
-
-    # Calculate ratios
-    voiced_count = np.sum(voiced_frames)
-    unvoiced_count = np.sum(unvoiced_frames)
-    voiced_to_unvoiced_ratio = voiced_count / unvoiced_count if unvoiced_count != 0 else float('inf')
-
+    
+    # # 输出结果
+    # print("Energy Entropy:", type(np.mean(energy_entropy)))
+    # print("Standard Deviation of Energy:", std_dev_energy)
+    # print("Spectral Centroid:", np.mean(spectral_centroid))
+    # print("Zero-Crossing Rate:", np.mean(zero_crossing_rate))
+    # print()
     # print(f"Voiced to Unvoiced Ratio: {voiced_to_unvoiced_ratio}")
     # print(f"Total Voiced Frames: {voiced_count}")
     # print(f"Total Unvoiced Frames: {unvoiced_count}")
+    # print()
+    # print(f"mean pitch: {mean_pitch}")
+    # print(f"mean intensity {mean_intensity}")
+    # print(f"Local Jitter: {localJitter}")
+    # print(f"Local Shimmer: {localShimmer}")
+    # print(f"Local Rap Jitter: {rapJitter}")
 
 
-    # # Output the results
-    # print("Energy Entropy (average over frames):", np.mean(energy_entropy))
-    # print("Standard Deviation of Energy:", std_dev_energy)
-    # print("Average Spectral Centroid:", np.mean(spectral_centroid))
-    # print("Total number of zero crossings: ", total_zero_crossings)
+with open('LTTC_Intermediate_word_level_0509.json',  'w') as file:
+    json.dump(new_dict, file, indent=2)
 
+# print(df)
+# print(data['112010103002']['segments'])
+# print(data['112010103002']['word_segments'][0])#['text'].strip())
+# print(data['112010103002']['segments'][1]['text'].strip())
+# print(data['112010103002']['segments'][1]['text'].strip())
+# speaker_id = '112010103002'
+# speaker_id = '112010103012'
+# file_path = f'/share/nas165/peng/desktop/ETS_nn/LTTC_Resample/IS-1572_sliced/{speaker_id}_300.wav'
 
-    new_dict[row['speaker_id']] = {'mean_pitch':mean_pitch,
-                                   'mean_intensity':mean_intensity, 
-                                   'duration': duration,
-                                   'localJitter': localJitter,
-                                   'localShimmer': localShimmer,
-                                   'rapJitter': rapJitter,
-                                   'long_silence': long_silence,
-                                   'silence': silence,
+# print(strr) 
+# print(data['112010103002']['segments'][0]['words'][0]['end'])
 
-                                   'long_silence_num': len(long_silences),
-                                   'silence_num': len(silences),
-                                   'std_energy': std_dev_energy,
-                                   'avg_spectral': np.mean(energy_entropy),
-                                   'avg_energy_entropy': np.mean(spectral_centroid),
-                                   'zero_cross_num': total_zero_crossings,
-                                   'v_to_uv_ratio': voiced_to_unvoiced_ratio,
-                                   'voice_count': voiced_count,
-                                   'unvoice_count': unvoiced_count,
-                                  # 'mean_long_silence': mean_long_silence,
-                                  # 'mean_silence': mean_silence,
-
-                                #    'sounding05_match': float(sounding05_match.group(1)),  
-                                #    'median05_match': float(median05_match.group(1)),    
-                                #    'minimum05_match': float(minimum05_match.group(1)),   
-                                #    'maximum05_match': float(maximum05_match.group(1)),   
-                                #    'averge05_match': float(averge05_match.group(1)),    
-                                #    'standard05_dev': float(standard05_dev.group(1)),
-                                #    'sounding15_match': float(sounding15_match.group(1)),  
-                                #    'median15_match': float(median15_match.group(1)),    
-                                #    'minimum15_match': float(minimum15_match.group(1)),   
-                                #    'maximum15_match': float(maximum15_match.group(1)),   
-                                #    'averge15_match': float(averge15_match.group(1)),    
-                                #    'standard15_dev': float(standard15_dev.group(1)),
-                                #    'sounding25_match': float(sounding25_match.group(1)),  
-                                #    'median25_match': float(median25_match.group(1)),    
-                                #    'minimum25_match': float(minimum25_match.group(1)),   
-                                #    'maximum25_match': float(maximum25_match.group(1)),   
-                                #    'averge25_match': float(averge25_match.group(1)),    
-                                #    'standard25_dev': float(standard25_dev.group(1)),
-                                  }
-print(new_dict)
-new_data = pd.DataFrame.from_dict(new_dict, orient='index')
-new_data = new_data.rename_axis('speaker_id')
-# print(new_data)
-new_data.to_excel(outputname)
-
-# merged_df = pd.merge(df, new_data, on='speaker_id')
-# print(merged_df)
+# for index, row in df.iterrows():
+#     speaker_id = row['speaker_id']
+#     sentence = row[speaker_id]['segments'][0]['text'].strip()
+#     sentence_start = row[speaker_id]['segments'][0]['text']['start']
+#     end = row[speaker_id]['segments'][0]['text']['end']
+#     print(data[speaker_id])

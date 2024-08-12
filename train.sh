@@ -13,7 +13,7 @@ exp_dir="./exp/LTTC-Intermediate/IS-${form_id}/${module_type}_${date}_${LEARNING
 
 
 # train: train.py, train_softlabel, train_wav2vec, train_subModel, pretrained Model
-CUDA_VISIBLE_DEVICES=1 python3 ./models/train_subModel.py   --train_file "$train_file" \
+CUDA_VISIBLE_DEVICES=0 python3 ./models/train_subModel.py   --train_file "$train_file" \
                         --dev_file  "$dev_file" \
                         --output_dir "$exp_dir"  \
                         --cuda_id 0 \
