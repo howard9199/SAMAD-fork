@@ -254,4 +254,4 @@ if __name__ == '__main__':
         train_dataset=train_df,
         eval_dataset=dev_df,
     )
-    # trainer.train()
+    trainer.train()

@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-import sys
-sys.path.append('/share/nas165/peng/thesis_project/SAMAD_05/models')
 from constants import POS, morph, DEP
 from transformer_model import *
 
