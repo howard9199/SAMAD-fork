@@ -18,12 +18,13 @@ def save_data(data, filename):
 
 file_path_json = '/share/nas165/peng/whisperX/LTTC_Intermediate.json'
 # file_path_json = '/share/nas165/peng/whisperX/data.json'
-file_path = '/share/nas165/peng/thesis_project/delivery_feat/Delivery_0508.csv'
+# file_path = '/share/nas165/peng/thesis_project/delivery_feat/Delivery_0508.csv'
+file_path = '/share/nas165/peng/thesis_project/SAMAD_06/data_simple/LTTC_Intermediate/Intermediate_All_0520.csv'
 
 # open json
 fin = open(file_path_json)
 data = json.load(fin)
-# print(data['112010103002'])
+
 # open origin
 df = pd.read_csv(file_path)
 
@@ -183,22 +184,3 @@ for index, row in df.iterrows():
 
 with open('LTTC_Intermediate_word_level_0509.json',  'w') as file:
     json.dump(new_dict, file, indent=2)
-
-# print(df)
-# print(data['112010103002']['segments'])
-# print(data['112010103002']['word_segments'][0])#['text'].strip())
-# print(data['112010103002']['segments'][1]['text'].strip())
-# print(data['112010103002']['segments'][1]['text'].strip())
-# speaker_id = '112010103002'
-# speaker_id = '112010103012'
-# file_path = f'/share/nas165/peng/desktop/ETS_nn/LTTC_Resample/IS-1572_sliced/{speaker_id}_300.wav'
-
-# print(strr) 
-# print(data['112010103002']['segments'][0]['words'][0]['end'])
-
-# for index, row in df.iterrows():
-#     speaker_id = row['speaker_id']
-#     sentence = row[speaker_id]['segments'][0]['text'].strip()
-#     sentence_start = row[speaker_id]['segments'][0]['text']['start']
-#     end = row[speaker_id]['segments'][0]['text']['end']
-#     print(data[speaker_id])
