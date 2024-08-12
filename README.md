@@ -1,1 +1,2 @@
-# SAMAD_model
+# SAMAD
+
