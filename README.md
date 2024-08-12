@@ -1,4 +1,4 @@
-# SAMAD
+# SAMAD (Speech Assessment Multi-Aspect Design)
 
 
 ## Package Requirements
