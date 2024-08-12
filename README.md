@@ -11,8 +11,10 @@ You can run the following command in your virtual environment:
 
 ```pip install -r requirements.txt```
 
-## Training and Evaluation (HiPAMA)
+## Training and Evaluation
 
-```./train.sh```
+Run
+```bash train.sh```
+```bash test.sh```
 
 Note that every run does not produce the same results due to the random elements.
