@@ -2,9 +2,9 @@
 
 # ======================= Intermediate ======================= 
 form_id='1964' # 1572, 1764, 1766, 1964(Main)
-date='0119'
-LEARNING_RATE='1e-4' # 1e-3
-module_type="SAMAD_BASE_dev" # content_only, content_langUse, SAMAD, SAMAD_wav2vec
+date='0110'
+LEARNING_RATE='1e-5' # 1e-3
+module_type="SAMAD_QWKloss" # content_only, content_langUse, SAMAD, SAMAD_wav2vec
 
 train_file="/share/nas165/peng/thesis_project/(ok)SAMAD_06/data/LTTC_Intermediate/Unseen_${form_id}/train_${form_id}_0520.csv"
 dev_file="/share/nas165/peng/thesis_project/(ok)SAMAD_06/data/LTTC_Intermediate/Unseen_${form_id}/dev_${form_id}_0520.csv"
@@ -28,10 +28,10 @@ exp_dir="./exp/LTTC-Intermediate/IS-${form_id}/${module_type}_${date}_${LEARNING
 CUDA_VISIBLE_DEVICES=0 python3 ./models/train_subModel.py  \
                         --output_dir "$exp_dir"  \
                         --cuda_id 0 \
-                        --train_epochs 8  \
-                        --train_batch  2  \
-                        --eval_batch   2 \
-                        --grad_acc     4 \
+                        --train_epochs 32  \
+                        --train_batch  64  \
+                        --eval_batch   64 \
+                        --grad_acc     1 \
                         --learning_rate $LEARNING_RATE \
 
 # ======================= High-Intermediate ======================= 

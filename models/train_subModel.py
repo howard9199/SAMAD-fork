@@ -81,7 +81,7 @@ def preprocess(examples):
         "masked_seq": masked_seq,
         "delivery_tra": vec,
     }
-    print("**************************************")
+    #print("**************************************")
 
     # BERT
     response_tokens = tokenizer(padded_response_emb, 
@@ -260,14 +260,17 @@ if __name__ == '__main__':
         per_device_eval_batch_size=args.eval_batch,     # 32
         gradient_accumulation_steps=args.grad_acc,
         evaluation_strategy="steps",
-        save_steps=10,
-        eval_steps=10,
+        save_steps=60,
+        eval_steps=60,
         num_train_epochs=args.train_epochs,
         logging_steps=8,
         learning_rate=args.learning_rate,
-        save_total_limit=5,
+        save_total_limit=2,
         load_best_model_at_end=True,
         metric_for_best_model="accuracy",
+        dataloader_prefetch_factor=8,
+        dataloader_persistent_workers=True,
+        dataloader_num_workers=4,
     )
 
     trainer = Trainer(

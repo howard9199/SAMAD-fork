@@ -62,6 +62,28 @@ class MultiFeatureModel(nn.Module):
         ).to(self.device)
         '''
 
+    def kappa_loss(self, p, y, n_classes=5, eps=1e-10, device='cuda'):
+        """
+        QWK loss function
+        Arguments:
+            p: probability predictions [batch_size, n_classes]
+            y: one-hot encoded labels [batch_size, n_classes]
+        """
+        
+        # 建立 weight matrix
+        W = torch.zeros((n_classes, n_classes), device=device)
+        for i in range(n_classes):
+            for j in range(n_classes):
+                W[i,j] = (i-j)**2
+        
+        # Change the W to float32
+        W = W.float()
+
+        # 計算 observed 和 expected matrices
+        O = torch.matmul(y.t(), p)
+        E = torch.matmul(y.sum(dim=0).view(-1,1), p.sum(dim=0).view(1,-1)) / O.sum()
+        
+        return (W*O).sum() / ((W*E).sum() + eps)
 
     def forward(self,
                 padded_res_emb,
@@ -123,18 +145,16 @@ class MultiFeatureModel(nn.Module):
 
         '''
         overall_loss = None
-        loss_fct = nn.CrossEntropyLoss()
         if labels is not None:
-            labels = labels.long().to(self.device)
-            loss_holistic = loss_fct(output.view(-1, self.num_labels), labels.view(-1))
+            # 將 output 轉換為機率分布
+            probs = F.softmax(output, dim=1)
+            
+            # 將 labels 轉換為 one-hot 編碼並移至正確的設備
+            labels_one_hot = F.one_hot(labels.long(), num_classes=self.num_labels).float().to(self.device)
+            
+            # 計算 kappa loss
+            loss_holistic = self.kappa_loss(probs, labels_one_hot, n_classes=self.num_labels, device=self.device)
             overall_loss = loss_holistic
-            overall_loss = overall_loss.to('cuda')
-        # soft label
-        # if labels is not None:
-        #     loss_fct = nn.CrossEntropyLoss()
-        #     loss_holistic = loss_fct(output.view(-1, self.num_labels), labels)
-        #     overall_loss = loss_holistic
-
-        # train.py
-        return TokenClassifierOutput(loss=overall_loss, logits=output) 
+            
+        return TokenClassifierOutput(loss=overall_loss, logits=output)
         #return output, subscore_content, subscore_delivery, subscore_langUse

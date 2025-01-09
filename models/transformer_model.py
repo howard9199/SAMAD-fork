@@ -4,7 +4,7 @@ import math
 
 # Positional Encoding
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=5000, device='cpu'):
+    def __init__(self, d_model, max_len=5000, device='cuda'):
         super(PositionalEncoding, self).__init__()
         self.encoding = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len).unsqueeze(1)
@@ -19,7 +19,7 @@ class PositionalEncoding(nn.Module):
 
 # Self-Attention(Multi-head)
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, num_heads, device='cpu'):
+    def __init__(self, d_model, num_heads, device='cuda'):
         super(MultiHeadAttention, self).__init__()
         self.num_heads = num_heads
         self.d_model = d_model
@@ -69,7 +69,7 @@ class MultiHeadAttention(nn.Module):
 
 # Encoding Layer
 class TransformerEncoderLayer(nn.Module):
-    def __init__(self, d_model, num_heads, device='cpu'):
+    def __init__(self, d_model, num_heads, device='cuda'):
         super(TransformerEncoderLayer, self).__init__()
         self.mha = MultiHeadAttention(d_model, num_heads)
         self.ffn = nn.Sequential(
@@ -81,7 +81,7 @@ class TransformerEncoderLayer(nn.Module):
         self.layernorm1 = nn.LayerNorm(d_model)
         self.layernorm2 = nn.LayerNorm(d_model)
 
-        self.dropout = nn.Dropout(0.1)
+        self.dropout = nn.Dropout(0.6)
         self.device = device
 
     def forward(self, x, mask):
@@ -95,7 +95,7 @@ class TransformerEncoderLayer(nn.Module):
         return out2
 
 class Transformer(nn.Module):
-    def __init__(self, num_layers, d_model, num_heads, device='cpu'):
+    def __init__(self, num_layers, d_model, num_heads, device='cuda'):
         super(Transformer, self).__init__()
         self.encoder_layers = nn.ModuleList([
             TransformerEncoderLayer(d_model, num_heads) for _ in range(num_layers)
@@ -110,7 +110,7 @@ class Transformer(nn.Module):
         return src
 
 class QKVTransformerEncoderLayer(nn.Module):
-    def __init__(self, d_model, num_heads, device='cpu'):
+    def __init__(self, d_model, num_heads, device='cuda'):
         super(QKVTransformerEncoderLayer, self).__init__()
         self.mha = MultiHeadAttention(d_model, num_heads)
         self.ffn = nn.Sequential(
@@ -121,7 +121,7 @@ class QKVTransformerEncoderLayer(nn.Module):
 
         self.layernorm1 = nn.LayerNorm(d_model)
         self.layernorm2 = nn.LayerNorm(d_model)
-        self.dropout = nn.Dropout(0.1)
+        self.dropout = nn.Dropout(0.3)
         self.device = device
 
     def forward(self, query, key, value, mask):
@@ -136,7 +136,7 @@ class QKVTransformerEncoderLayer(nn.Module):
 
         
 class QKVTransformer(nn.Module):
-    def __init__(self, num_layers, d_model, num_heads, device='cpu'):
+    def __init__(self, num_layers, d_model, num_heads, device='cuda'):
         super(QKVTransformer, self).__init__()
         self.encoder_layers = nn.ModuleList([
             QKVTransformerEncoderLayer(d_model, num_heads, device=device) for _ in range(num_layers)

@@ -154,17 +154,17 @@ def preprocess(examples):
         "masked_seq": masked_seq,
         "delivery_tra": vec
     }
-    print("**************************************")
+    #print("**************************************")
 
     # ========================= Wav2vec Delivery =================================
-    speech_list = [speech_file_to_array_fn(path) for path in examples[args.path_column]]
-    result['delivery_emb'] = processor(speech_list, 
-                                    sampling_rate=target_sampling_rate,
-                                    max_length=max_audio_length,
-                                    truncation=True,
-                                    padding='max_length',
-                                    return_tensors="pt"
-                                )['input_values']
+    #speech_list = [speech_file_to_array_fn(path) for path in examples[args.path_column]]
+    #result['delivery_emb'] = processor(speech_list, 
+    #                                sampling_rate=target_sampling_rate,
+    #                                max_length=max_audio_length,
+    #                                truncation=True,
+    #                                 padding='max_length',
+    #                                return_tensors="pt"
+    #                            )['input_values']
     
     # BERT
     response_tokens = tokenizer(padded_response_emb, 
@@ -265,6 +265,7 @@ if __name__ == '__main__':
     parser.add_argument('--description',    default='prompt', help='description')    
     parser.add_argument('--score',   default='grade', help='score_value')
     parser.add_argument('--dataset_name', default="ntnu-smil/Unseen_1964", help='huggingface dataset name')
+    parser.add_argument('--dataset_split', default="test")
     # parser.add_argument('--ques_id',        type=int, default=100, help='ques_id')
 
     args = parser.parse_args()
@@ -278,7 +279,7 @@ if __name__ == '__main__':
     if args.test_file:
         test_df = dataset_prepare(args.test_file)
     else:
-        test_df = dataset_prepare_fromHF(args.dataset_name, "fulltest")
+        test_df = dataset_prepare_fromHF(args.dataset_name, args.dataset_split)
 
     label_list2 = test_df.unique(args.score)
     label_list = [1, 2, 3, 4, 5] 
