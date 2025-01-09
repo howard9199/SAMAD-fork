@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # ==========================================================
-form_id='1572' # 1572, 1764, 1766, 1964(Main)
-checkpoint='720'
-date='0627'
+form_id='1964' # 1572, 1764, 1766, 1964(Main)
+checkpoint='650'
+date='1206'
 # ==========================================================
 # level='LTTC_Intermediate'
 # model_name='SAMAD_MHA_roundown_0610_1e-4' # SAMAD_MHA_0615_1e-4_1.2_roundown, SAMAD_MHA_OLL_0617_1e-4_roundown
@@ -11,19 +11,21 @@ date='0627'
 # 0615_softlabel_roundown
 # Single model
 level='LTTC_Intermediate'
-model_name='SAMAD_MHA_content_langUse_0620_1e-4_roundown' # SAMAD_MHA_content_0620_1e-4_roundown, SAMAD_MHA_content_only_0611_1e-4, SAMAD_MHA_content_delivery_0611_1e-4, SAMAD_MHA_langUse_0611_1e-4
+model_name='SAMAD_MHA_0812_1e-4_roundown' # SAMAD_MHA_content_0620_1e-4_roundown, SAMAD_MHA_content_only_0611_1e-4, SAMAD_MHA_content_delivery_0611_1e-4, SAMAD_MHA_langUse_0611_1e-4
 model_path="./exp/LTTC-Intermediate/IS-${form_id}/${model_name}/checkpoint-${checkpoint}"
 # ---------------------------------------------------------------------------
-known_types=("known" "unknown")
-test_path=("test" "fulltest")
+#known_types=("known" "unknown")
+#test_path=("test" "fulltest")
+known_types=("known_dev")
+test_path=("dev")
 
 for index in ${!known_types[@]}; 
 do 
     test_name=${test_path[$index]}
     known_type=${known_types[$index]}
 
-    test_path="/share/nas165/peng/thesis_project/SAMAD_06/data/${level}/Unseen_${form_id}/${test_name}_${form_id}_0520.csv"
-
+    #test_path="/share/nas165/peng/thesis_project/(ok)SAMAD_06/data/${level}/Unseen_${form_id}/${test_name}_${form_id}_0520.csv"
+    test_path="/datas/store163/howard/samad/SAMAD/picture-description/cleaned_dev_1764_0520_merged.csv"
     # Create a new folder to store the output results
     folder_name="./results/${level}/${form_id}/${model_name}_${date}/${known_type}/Ckpt_${checkpoint}"
     if [ -d "$folder_name" ]; then
@@ -48,7 +50,7 @@ do
     tsne_name_langUse="${folder_name}/tsne/${known_type}_ckpt${checkpoint}_langUSe.png"
     
     
-    CUDA_VISIBLE_DEVICES=1 python3 ./models/test.py --model_path "$model_path" \
+    CUDA_VISIBLE_DEVICES=0 python3 ./models/test.py --model_path "$model_path" \
                                     --output_path "$output_path" \
                                     --test_file  "$test_path" \
                                     --logit_name "$logits_name" \
@@ -58,7 +60,7 @@ do
                                     --output_content_name  "$tsne_name_content" \
                                     --output_delivery_name "$tsne_name_delivery" \
                                     --output_langUse_name  "$tsne_name_langUse" \
-                                    --cuda_id 1 \
+                                    --cuda_id 0 \
 
 done
 

@@ -1,20 +1,31 @@
 #!/bin/bash
 
 # ======================= Intermediate ======================= 
-form_id='1572' # 1572, 1764, 1766, 1964(Main)
-date='0812'
+form_id='1964' # 1572, 1764, 1766, 1964(Main)
+date='0119'
 LEARNING_RATE='1e-4' # 1e-3
-module_type="SAMAD_MHA" # content_only, content_langUse, SAMAD, SAMAD_wav2vec
+module_type="SAMAD_BASE_dev" # content_only, content_langUse, SAMAD, SAMAD_wav2vec
 
-train_file="/share/nas165/peng/thesis_project/SAMAD_06/data/LTTC_Intermediate/Unseen_${form_id}/train_${form_id}_0520.csv"
-dev_file="/share/nas165/peng/thesis_project/SAMAD_06/data/LTTC_Intermediate/Unseen_${form_id}/dev_${form_id}_0520.csv"
+train_file="/share/nas165/peng/thesis_project/(ok)SAMAD_06/data/LTTC_Intermediate/Unseen_${form_id}/train_${form_id}_0520.csv"
+dev_file="/share/nas165/peng/thesis_project/(ok)SAMAD_06/data/LTTC_Intermediate/Unseen_${form_id}/dev_${form_id}_0520.csv"
+#train_file="/datas/store163/howard/samad/SAMAD/picture-description/cleaned_train_1764_0520_merged.csv"
+#dev_file="/datas/store163/howard/samad/SAMAD/picture-description/cleaned_dev_1764_0520_merged.csv"
 
 exp_dir="./exp/LTTC-Intermediate/IS-${form_id}/${module_type}_${date}_${LEARNING_RATE}_roundown"
 
 
 # train: train.py, train_softlabel, train_wav2vec, train_subModel, pretrained Model
-CUDA_VISIBLE_DEVICES=0 python3 ./models/train_subModel.py   --train_file "$train_file" \
-                        --dev_file  "$dev_file" \
+#
+#CUDA_VISIBLE_DEVICES=0 python3 ./models/train_subModel.py   --train_file "$train_file" \
+#                        --dev_file  "$dev_file" \
+#                        --output_dir "$exp_dir"  \
+#                        --cuda_id 0 \
+#                        --train_epochs 8  \
+#                        --train_batch  2  \
+#                        --eval_batch   2 \
+#                        --grad_acc     4 \
+#                        --learning_rate $LEARNING_RATE \
+CUDA_VISIBLE_DEVICES=0 python3 ./models/train_subModel.py  \
                         --output_dir "$exp_dir"  \
                         --cuda_id 0 \
                         --train_epochs 8  \
@@ -22,7 +33,6 @@ CUDA_VISIBLE_DEVICES=0 python3 ./models/train_subModel.py   --train_file "$train
                         --eval_batch   2 \
                         --grad_acc     4 \
                         --learning_rate $LEARNING_RATE \
-
 
 # ======================= High-Intermediate ======================= 
 # form_id = '1962' # 1731, 1801, 1862, 1962(Main)

@@ -1,7 +1,7 @@
+# train_subModel_by_subscore.py
 
-# =======================Preprocessing===============================
 import pandas as pd
-from datasets import Dataset, load_dataset
+from datasets import Dataset
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,14 +10,19 @@ import spacy
 from transformer_model import Transformer
 from transformers.modeling_outputs import TokenClassifierOutput
 from transformers import BertTokenizer, BertModel
-from transformers import Wav2Vec2CTCTokenizer, Wav2Vec2Model, Wav2Vec2Processor
-# from transformers import WhisperProcessor, WhisperModel
+from transformers import Wav2Vec2Processor
 import os
 import re
 import warnings
 warnings.filterwarnings('ignore')
 from text_preprocessing import *
 import json
+import librosa
+import argparse
+import math
+from sklearn.metrics import accuracy_score
+
+np.random.seed(42)
 
 def phi(task_label, true_label):
     if task_label == true_label:
@@ -45,8 +50,7 @@ def speech_file_to_array_fn(path):
 
     return mono_waveform
 
-
-def cal_parameter():
+def cal_parameter(model):
     total_params = sum(
         param.numel() for param in model.parameters()
     )
@@ -54,12 +58,23 @@ def cal_parameter():
         p.numel() for p in model.parameters() if p.requires_grad
     )
 
-    print(f'Total: {total_params}')
-    print(f'Trainable: {trainable_params}')
+    print(f'Total parameters: {total_params}')
+    print(f'Trainable parameters: {trainable_params}')
+
+def dataset_prepare(file_path):
+    df = pd.read_csv(file_path)
+    # random score
+    # df[args.score] = random_round(df[args.score])
+    # baseline
+    #print(args.module)
+    #print(df[args.module])
+    df[args.module] = df[args.module].apply(math.ceil)     # 3.5 -> 3.0
+    df = Dataset.from_dict(df)
+    return df
 
 def preprocess(examples):
 
-    target_list = [label_to_id(label, label_list) for label in examples[args.score]]
+    target_list = [label_to_id(label, label_list) for label in examples[args.module]]
     
     # Softmax 
     # target_list = [func_softLabels(label_to_id(label, label_list)) for label in examples[args.score]]
@@ -99,14 +114,14 @@ def preprocess(examples):
                                 return_tensors='pt')
     
     # ========================= Wav2vec Delivery =================================
-    # speech_list = [speech_file_to_array_fn(path) for path in examples[args.path_column]]
-    # result['delivery_emb'] = processor(speech_list, 
-    #                                 sampling_rate=target_sampling_rate,
-    #                                 max_length=max_audio_length,
-    #                                 truncation=True,
-    #                                 padding='max_length',
-    #                                 return_tensors="pt"
-    #                             )['input_values']
+    speech_list = [speech_file_to_array_fn(path) for path in examples[args.path_column]]
+    result['input_emb'] = processor(speech_list, 
+                                    sampling_rate=target_sampling_rate,
+                                    max_length=max_audio_length,
+                                    truncation=True,
+                                    padding='max_length',
+                                    return_tensors="pt"
+                                )['input_values']
 
 
     result['padded_res_emb'] = response_tokens['input_ids']
@@ -119,103 +134,68 @@ def preprocess(examples):
 
     return result
 
-from sklearn.metrics import accuracy_score
 def compute_metrics(eval_pred):
     predictions = np.argmax(eval_pred.predictions, axis=1)
     references = eval_pred.label_ids
-    acc = accuracy_score(eval_pred.label_ids, predictions)
-    return {"accuracy": float(acc)}
+    acc = accuracy_score(references, predictions)
+    return {"accuracy": acc}
 
-# soft label
-# from sklearn.metrics import accuracy_score
-# def compute_metrics(eval_pred):
-#     predictions = np.argmax(eval_pred.predictions, axis=1)
-#     references = np.argmax(eval_pred.label_ids, axis=1) # softlabel才需這樣算！
-#     acc = accuracy_score(references, predictions)
-    # return {"accuracy": float(acc)}
-    
-np.random.seed(42)
-def random_round(scores):
-    round_up = np.random.rand(*scores.shape) < 0.5 
-    return np.where(round_up, np.ceil(scores), np.floor(scores))
-
-
-import math
-def dataset_prepare(file_path):
-    df = pd.read_csv(file_path)
-    # random score
-    # df[args.score] = random_round(df[args.score])
-    # baseline
-    df[args.score] = df[args.score].apply(math.floor)     # 3.5 -> 3.0
-    df = Dataset.from_dict(df)
-    return df
-
-def dataset_prepare_fromHF(dataset_name, split="train"):
-    """
-    從 Hugging Face Hub 讀取資料集
-    Args:
-        dataset_name: Hugging Face Hub 上的資料集名稱
-        split: 要讀取的資料split (train/validation/test/fulltest)
-    """
-    dataset = load_dataset(dataset_name)
-    df = dataset[split]
-    
-    # baseline - 將分數無條件捨去
-    df = df.map(lambda x: {"grade": math.floor(x["grade"])})
-    
-    return df
-
-import argparse
+def compute_loss(model, inputs):
+    outputs = model(**inputs)
+    labels = inputs.get("labels")
+    loss_fn = nn.CrossEntropyLoss()
+    loss = loss_fn(outputs, labels)
+    return loss
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--cuda_id", type=int, default=0, help="cuda device")
-    parser.add_argument('--train_file',     help='path')
-    parser.add_argument('--dev_file',       help='path')
-    parser.add_argument('--output_dir',     help='path')
-    # parser.add_argument('--asr_transcrip',    default='asr_transcription', help='text_value')
+    parser.add_argument('--cuda_id', type=int, default=0, help='cuda device')
+    parser.add_argument('--train_file', help='訓練資料檔案路徑')
+    parser.add_argument('--dev_file', help='驗證資料檔案路徑')
+    parser.add_argument('--output_dir', help='模型輸出路徑')
+    parser.add_argument('--module', type=str, required=True, choices=['relevance', 'delivery', 'language'], help='要訓練的模組')
+    parser.add_argument('--train_epochs', type=int, default=5, help='訓練回合數')
+    parser.add_argument('--train_batch', type=int, default=2, help='訓練批次大小')
+    parser.add_argument('--eval_batch', type=int, default=2, help='驗證批次大小')
+    parser.add_argument('--learning_rate', type=float, default=1e-4, help='學習率')
     parser.add_argument('--asr_transcrip', default='whisperX_transcription', help='text_value')
-
     parser.add_argument('--description',    default='prompt', help='description')
-    parser.add_argument('--score',   default='grade', help='score_value')
     parser.add_argument('--path_column',    default='wav_path', help='path_value')
-    parser.add_argument('--train_epochs',   type=int, default=8, help='epochs')
-    parser.add_argument('--train_batch',    type=int, default=2, help='epochs')
-    parser.add_argument('--eval_batch',     type=int, default=2, help='batch')
-    parser.add_argument('--grad_acc',       type=int, default=4, help='grad_acc')
-    parser.add_argument('--learning_rate',  type=float, default=1e-3, help='grad_acc')
-    parser.add_argument('--softlabel_para', type=float, default=0.8, help='score_value')
-    parser.add_argument('--dataset_name', default="ntnu-smil/Unseen_1964", help='huggingface dataset name')
-
     args = parser.parse_args()
-    # ------------------------Cuda Device------------------------------
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(device, str(args.cuda_id))
 
-    # --------------------------- Loading Data------------------------------------
-    if args.train_file:
-        train_df = dataset_prepare(args.train_file)
-        dev_df = dataset_prepare(args.dev_file)
-    else:
-        train_df = dataset_prepare_fromHF(args.dataset_name, "train")
-        dev_df = dataset_prepare_fromHF(args.dataset_name, "validation")
+    #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device =  torch.device("cpu")
+    print("使用裝置:", device)
 
-    label_list2 = train_df.unique(args.score)
+    # 載入資料
+    train_df = dataset_prepare(args.train_file)
+    dev_df = dataset_prepare(args.dev_file)
+
+    processor = Wav2Vec2Processor.from_pretrained('facebook/wav2vec2-base')
+
+    # 準備 tokenizer
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
+    #label_list2 = train_df.unique(args.score)
     label_list = [1, 2, 3, 4, 5] 
     label_list.sort()
-    label_list2.sort()
+    #label_list2.sort()
     num_labels = len(label_list)
-    print('Actually label list', label_list2)
-    print(f"A classification problem with {num_labels} classes: {label_list}")
 
-    # --------------------------- BERT FeatureExtractor ------------------------------------
-    from transformers import BertTokenizer
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    processor = Wav2Vec2Processor.from_pretrained('facebook/wav2vec2-base')
+    if args.module == 'relevance':
+        from content_module import content_BLSTM
+        model = content_BLSTM()
+        model.set_state(1)
+    elif args.module == 'delivery':
+        from delivery_module import Delivery_BLSTM
+        model = Delivery_BLSTM()#delivery,relevance,language
+        model.set_state(1)
+    elif args.module == 'language':
+        from langUse_module import Language_BLSTM
+        model = Language_BLSTM(device=device)
+        model.set_state(1)
     # --------------------------Data Preparation---------------------------
-    #train_df = Dataset.load_from_disk('/datas/store162/howard/samad/dataframe/train_df')
-    #dev_df = Dataset.load_from_disk('/datas/store162/howard/samad/dataframe/dev_df')
-
+    '''
     train_df = train_df.map(
         preprocess,
         batch_size=100,
@@ -242,39 +222,53 @@ if __name__ == '__main__':
     print('train_df', train_df)
     print("dev_df", dev_df)
 
-    # ------------------------Model------------------------------
-    from multi_subModule import *
-    
-    model = MultiFeatureModel(device, num_labels=num_labels)
-    model.to(device)
-    cal_parameter()
+    # save the processed data to /datas/store162/howard/samad/dataframe/
+    train_df.save_to_disk('/datas/store162/howard/samad/dataframe/train_subscore_df')
+    dev_df.save_to_disk('/datas/store162/howard/samad/dataframe/dev_subscore_df')
+    '''
+    train_df = Dataset.load_from_disk('/datas/store162/howard/samad/dataframe/train_subscore_df')
+    dev_df = Dataset.load_from_disk('/datas/store162/howard/samad/dataframe/dev_subscore_df')
 
-    # ======================= Trainer ===================================
+    # rename the delivery_emb to input_emb
+    #train_df = train_df.rename_column('delivery_emb', 'input_emb')
+    #dev_df = dev_df.rename_column('delivery_emb', 'input_emb')
+    # load df to gpu
+    train_df.set_format(type='torch', columns=['padded_seq', 'masked_seq', 'input_emb', 'padded_res_emb', 'attention_mask_res', 'padded_pro_emb', 'attention_mask_pro', 'labels'])
+    dev_df.set_format(type='torch', columns=['padded_seq', 'masked_seq', 'input_emb', 'padded_res_emb', 'attention_mask_res', 'padded_pro_emb', 'attention_mask_pro', 'labels'])
+
+    
+    num_labels = len(label_list)
+    model.to(device)
+    cal_parameter(model)
+
     from transformers import TrainingArguments, Trainer
     import wandb
     wandb.init()
-
+    
     training_args = TrainingArguments(
         output_dir=args.output_dir,
-        per_device_train_batch_size=args.train_batch,   # 32
-        per_device_eval_batch_size=args.eval_batch,     # 32
-        gradient_accumulation_steps=args.grad_acc,
+        per_device_train_batch_size=args.train_batch,
+        per_device_eval_batch_size=args.eval_batch,
+        num_train_epochs=args.train_epochs,
+        learning_rate=args.learning_rate,
         evaluation_strategy="steps",
         save_steps=10,
         eval_steps=10,
-        num_train_epochs=args.train_epochs,
-        logging_steps=8,
-        learning_rate=args.learning_rate,
+        logging_steps=10,
         save_total_limit=5,
         load_best_model_at_end=True,
         metric_for_best_model="accuracy",
+        no_cuda=True
     )
 
+    def model_init():
+        return model
+
     trainer = Trainer(
-        model=model,
+        model_init=model_init,
         args=training_args,
         compute_metrics=compute_metrics,
         train_dataset=train_df,
-        eval_dataset=dev_df,
+        eval_dataset=dev_df
     )
     trainer.train()

@@ -6,7 +6,7 @@ import sys
 from content_module import content_BLSTM
 # from langUse_module import Language_BLSTM
 from delivery_module import *
-from datasets import Dataset
+from datasets import Dataset, load_dataset
 import spacy
 from transformer_model import Transformer
 from transformers.modeling_outputs import TokenClassifierOutput
@@ -25,6 +25,7 @@ from sklearn.manifold import TSNE
 import librosa
 max_audio_length = 16000 * 90  # 假設音訊的最大長度是16000個樣本點
 target_sampling_rate = 16000
+holistic_list = []
 def speech_file_to_array_fn(path):
     speech_array, sampling_rate = librosa.load(path, sr=target_sampling_rate)
     mono_waveform = librosa.resample(speech_array, orig_sr=sampling_rate, target_sr=target_sampling_rate)
@@ -156,14 +157,14 @@ def preprocess(examples):
     print("**************************************")
 
     # ========================= Wav2vec Delivery =================================
-    # speech_list = [speech_file_to_array_fn(path) for path in examples[args.path_column]]
-    # result['delivery_emb'] = processor(speech_list, 
-    #                                 sampling_rate=target_sampling_rate,
-    #                                 max_length=max_audio_length,
-    #                                 truncation=True,
-    #                                 padding='max_length',
-    #                                 return_tensors="pt"
-    #                             )['input_values']
+    speech_list = [speech_file_to_array_fn(path) for path in examples[args.path_column]]
+    result['delivery_emb'] = processor(speech_list, 
+                                    sampling_rate=target_sampling_rate,
+                                    max_length=max_audio_length,
+                                    truncation=True,
+                                    padding='max_length',
+                                    return_tensors="pt"
+                                )['input_values']
     
     # BERT
     response_tokens = tokenizer(padded_response_emb, 
@@ -197,12 +198,13 @@ def preprocess(examples):
             padded_seq=torch.tensor(result['padded_seq']).to(device),
             masked_seq=torch.tensor(result['masked_seq']).to(device),
             delivery_tra=torch.tensor(result['delivery_tra'], dtype=torch.float32).to(device),
-            # delivery_emb=torch.tensor(result['delivery_emb']).to(device),
+            #input_emb=torch.tensor(result['delivery_emb']).to(device),
             ).logits
 
     global holistic_list
 
     holistic_list.append(logits.cpu().detach().numpy())
+    #print('holistic_list', holistic_list)
 
     softmax = nn.Softmax(dim=1)
     holistic_logits = softmax(logits)
@@ -227,6 +229,21 @@ def dataset_prepare(file_path):
     df = Dataset.from_dict(df)
     return df
 
+def dataset_prepare_fromHF(dataset_name, split="fulltest"):
+    """
+    從 Hugging Face Hub 讀取資料集
+    Args:
+        dataset_name: Hugging Face Hub 上的資料集名稱
+        split: 要讀取的資料split (train/validation/test/fulltest)
+    """
+    dataset = load_dataset(dataset_name)
+    df = dataset[split]
+    
+    # baseline - 將分數無條件捨去
+    df = df.map(lambda x: {"grade": math.floor(x["grade"])})
+    
+    return df
+
 import argparse
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -247,6 +264,7 @@ if __name__ == '__main__':
     parser.add_argument('--example_column',    default='example', help='text_value')
     parser.add_argument('--description',    default='prompt', help='description')    
     parser.add_argument('--score',   default='grade', help='score_value')
+    parser.add_argument('--dataset_name', default="ntnu-smil/Unseen_1964", help='huggingface dataset name')
     # parser.add_argument('--ques_id',        type=int, default=100, help='ques_id')
 
     args = parser.parse_args()
@@ -257,7 +275,10 @@ if __name__ == '__main__':
     print(args.cuda_id, device)
 
     # --------------------------- Loading Data------------------------------------
-    test_df = dataset_prepare(args.test_file)
+    if args.test_file:
+        test_df = dataset_prepare(args.test_file)
+    else:
+        test_df = dataset_prepare_fromHF(args.dataset_name, "fulltest")
 
     label_list2 = test_df.unique(args.score)
     label_list = [1, 2, 3, 4, 5] 
@@ -279,8 +300,8 @@ if __name__ == '__main__':
 
 
     model = MultiFeatureModel(device, num_labels=num_labels)
-    finetune_model = torch.load(args.model_path + '/pytorch_model.bin')
-    model.load_state_dict(finetune_model, strict=False)
+    state_dict = load_file(args.model_path + '/model.safetensors')
+    model.load_state_dict(state_dict, strict=False)
     model.to(device)
     model.eval()
 
@@ -313,7 +334,7 @@ if __name__ == '__main__':
 
     for logits in logits_datasets:
         temp = np.concatenate(logits, axis=0)
-        tsne = TSNE(n_components=2, random_state=42)
+        tsne = TSNE(n_components=2, random_state=42, perplexity=9)
         tsne_result = tsne.fit_transform(temp) # [90, 2]
         tsne_results.append(tsne_result)
 
